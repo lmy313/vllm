@@ -47,6 +47,7 @@ class CompletionOutput:
     finish_reason: Optional[str] = None
     stop_reason: Union[int, str, None] = None
     lora_request: Optional[LoRARequest] = None
+    routing_info: Optional[torch.Tensor] = None
 
     def finished(self) -> bool:
         return self.finish_reason is not None

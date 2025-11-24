@@ -107,7 +107,8 @@ class LLMEngine:
             executor_class=executor_class,
             log_stats=self.log_stats,
         )
-
+        print(
+            f"dp size is {vllm_config.parallel_config.data_parallel_size}, world size is {vllm_config.parallel_config.world_size}")
         if not multiprocess_mode:
             # for v0 compatibility
             self.model_executor = self.engine_core.engine_core.model_executor  # type: ignore
@@ -202,7 +203,7 @@ class LLMEngine:
         prompt_str, request = self.processor.process_inputs(
             request_id, prompt, params, arrival_time, lora_request,
             tokenization_kwargs, trace_headers, priority)
-
+        # print(f"lq debug, prompt_str is {prompt_str}, request is {request}")
         n = params.n if isinstance(params, SamplingParams) else 1
 
         if n == 1:

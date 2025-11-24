@@ -204,6 +204,7 @@ class SamplingParams(
     detokenize: bool = True
     skip_special_tokens: bool = True
     spaces_between_special_tokens: bool = True
+    return_routing_info: bool = False
     # Optional[list[LogitsProcessor]] type. We use Any here because
     # Optional[list[LogitsProcessor]] type is not supported by msgspec.
     logits_processors: Optional[Any] = None

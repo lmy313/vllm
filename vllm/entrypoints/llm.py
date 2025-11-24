@@ -10,6 +10,7 @@ from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Optional, Union,
 
 import cloudpickle
 import torch.nn as nn
+import torch
 from pydantic import ValidationError
 from tqdm.auto import tqdm
 from typing_extensions import TypeVar, deprecated
@@ -492,6 +493,11 @@ class LLM:
         lora_request = self._get_modality_specific_lora_reqs(
             parsed_prompts, lora_request)
 
+        if sampling_params.return_routing_info:
+            from vllm_ascend.ops.fused_moe import RoutingRecorder
+            recorder = RoutingRecorder()
+            recorder.start_record()
+
         self._validate_and_add_requests(
             prompts=parsed_prompts,
             params=sampling_params,
@@ -503,6 +509,22 @@ class LLM:
         )
 
         outputs = self._run_engine(use_tqdm=use_tqdm)
+
+        if sampling_params.return_routing_info:
+            recorder = RoutingRecorder()
+            routing_info = recorder.converge_records_to_per_rids()
+            for output in outputs:
+                output.outputs[0].routing_info = routing_info[output.request_id]["topk_ids_of_layer"]
+            recorder.stop_record()
+            # print(f"lq debug, routing_info is {routing_info}")
+            # print(f"lq debug, output.outputs[0].routing_info is {output.outputs[0].routing_info}")
+        torch.set_printoptions(
+            threshold=float('inf'),  # 打印全部元素
+            linewidth=200,  # 每行宽度
+            precision=4,  # 小数精度（对 float）
+            sci_mode=False  # 禁用科学计数法
+        )
+        # print(f"lq debug, outputs is {outputs}")
         return self.engine_class.validate_outputs(outputs, RequestOutput)
 
     def _get_modality_specific_lora_reqs(
