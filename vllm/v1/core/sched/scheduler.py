@@ -9,6 +9,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from typing import Any, Optional, Union
 
+import numpy as np
 from vllm.config import VllmConfig
 from vllm.distributed.kv_events import EventPublisherFactory, KVEventBatch
 from vllm.distributed.kv_transfer.kv_connector.factory import (
@@ -34,6 +35,7 @@ from vllm.v1.outputs import ModelRunnerOutput
 from vllm.v1.request import Request, RequestStatus
 from vllm.v1.spec_decode.metrics import SpecDecodingStats
 from vllm.v1.structured_output import StructuredOutputManager
+from vllm.model_executor.layers.fused_moe.routed_experts_capturer import RoutedExpertsReader
 
 logger = init_logger(__name__)
 
@@ -161,6 +163,19 @@ class Scheduler(SchedulerInterface):
             enable_kv_cache_events=self.enable_kv_cache_events,
         )
         self.use_pp = self.parallel_config.pipeline_parallel_size > 1
+        self.max_num_kv_tokens = (
+            kv_cache_config.num_blocks // len(kv_cache_config.kv_cache_groups) + 1
+        ) * self.block_size
+
+        self.routed_experts_reader = RoutedExpertsReader.create(
+            enable=self.vllm_config.model_config.enable_return_routed_experts
+        )
+        self.instance_id = f"rank_{vllm_config.parallel_config.rank // vllm_config.parallel_config.world_size}"
+        self.routed_experts_reader.attach_buffer(
+            max_num_kv_tokens=self.max_num_kv_tokens,
+            model_config=self.vllm_config.model_config,
+            instance_id=self.instance_id,
+        )
 
     def schedule(self) -> SchedulerOutput:
         # NOTE(woosuk) on the scheduling algorithm:
@@ -813,8 +828,36 @@ class Scheduler(SchedulerInterface):
                 pooler_output = pooler_outputs[req_index]
                 stopped = check_stop(request, self.max_model_len,
                                      pooler_output)
-
+            routed_experts = None
             if stopped:
+                if self.vllm_config.model_config.enable_return_routed_experts:
+                    assert len(self.kv_cache_config.kv_cache_groups) == 1
+
+                    block_ids = self.kv_cache_manager.get_block_ids(request.request_id)[0]
+                    num_tokens = request.num_tokens - 1
+
+                    # compute slot mapping
+                    block_ids_array = np.array(block_ids, dtype=np.int32)
+                    num_blocks = len(block_ids)
+                    block_size = self.block_size
+
+                    # generate block offsets
+                    block_offsets = np.arange(0, block_size)
+
+                    # compute slot mapping: slot = block_id * block_size + offset
+                    # print(f"lq debug, block_ids_array is {block_ids_array}")
+                    slot_mapping = (
+                                           block_offsets.reshape((1, block_size))
+                                           + block_ids_array.reshape((num_blocks, 1)) * block_size
+                                   ).flatten()[:num_tokens]
+                    np.set_printoptions(threshold=np.inf, linewidth=500)
+                    # print(f"lq debug, block_ids_array is {block_ids_array}, slot_mapping is {slot_mapping}")
+                    routed_experts = self.routed_experts_reader.get_routed_experts(
+                        indices=slot_mapping
+                    )
+                    # print(f"lq debug, vllm routed_experts is {routed_experts}")
+                    routed_experts = np.transpose(routed_experts, (1, 0, 2))
+                    # print(f"lq debug, vllm reshape routed_experts is {routed_experts}")
                 kv_transfer_params = self._free_request(request)
                 if status_before_stop == RequestStatus.RUNNING:
                     stopped_running_reqs.add(request)
@@ -868,6 +911,7 @@ class Scheduler(SchedulerInterface):
                         events=request.take_events(),
                         kv_transfer_params=kv_transfer_params,
                         num_cached_tokens=request.num_cached_tokens,
+                        routed_experts=routed_experts
                     ))
 
             else:

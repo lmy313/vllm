@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from typing import Any, Optional, Union
 
 import msgspec
+import numpy as np
 import torch
 
 from vllm.lora.request import LoRARequest
@@ -117,6 +118,7 @@ class EngineCoreOutput(
 
     # The number of tokens with prefix cache hits.
     num_cached_tokens: int = 0
+    routed_experts: np.ndarray | None = None
 
     @property
     def finished(self) -> bool:

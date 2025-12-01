@@ -309,6 +309,8 @@ class ModelConfig:
     graph and always execute the model in eager mode. If False, we will use
     CUDA graph and eager execution in hybrid for maximal performance and
     flexibility."""
+    enable_return_routed_experts: bool = False
+    """Whether to return routed experts."""
     max_seq_len_to_capture: int = 8192
     """Maximum sequence len covered by CUDA graphs. When a sequence has context
     length larger than this, we fall back to eager mode. Additionally for
@@ -4826,6 +4828,7 @@ class VllmConfig:
             f"disable_custom_all_reduce={self.parallel_config.disable_custom_all_reduce}, "  # noqa
             f"quantization={self.model_config.quantization}, "
             f"enforce_eager={self.model_config.enforce_eager}, "
+            f"enable_return_routed_experts={self.model_config.enable_return_routed_experts}, "  # noqa
             f"kv_cache_dtype={self.cache_config.cache_dtype}, "
             f" device_config={self.device_config.device}, "
             f"decoding_config={self.decoding_config!r}, "

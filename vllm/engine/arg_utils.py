@@ -265,6 +265,7 @@ def get_kwargs(cls: ConfigType) -> dict[str, Any]:
 class EngineArgs:
     """Arguments for vLLM engine."""
     model: str = ModelConfig.model
+    enable_return_routed_experts: bool = ModelConfig.enable_return_routed_experts
     served_model_name: Optional[Union[
         str, List[str]]] = ModelConfig.served_model_name
     tokenizer: Optional[str] = ModelConfig.tokenizer
@@ -486,6 +487,8 @@ class EngineArgs:
                                  **model_kwargs["quantization"])
         model_group.add_argument("--enforce-eager",
                                  **model_kwargs["enforce_eager"])
+        model_group.add_argument("--enable-return-routed-experts",
+                                 **model_kwargs["enable_return_routed_experts"])
         model_group.add_argument("--max-seq-len-to-capture",
                                  **model_kwargs["max_seq_len_to_capture"])
         model_group.add_argument("--max-logprobs",
@@ -889,6 +892,7 @@ class EngineArgs:
             max_model_len=self.max_model_len,
             quantization=self.quantization,
             enforce_eager=self.enforce_eager,
+            enable_return_routed_experts=self.enable_return_routed_experts,
             max_seq_len_to_capture=self.max_seq_len_to_capture,
             max_logprobs=self.max_logprobs,
             logprobs_mode=self.logprobs_mode,
